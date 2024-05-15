@@ -1,0 +1,979 @@
+---
+title: "World Demography Dashboard" 
+# author: "CID: 02511851"
+# date: "5 May, 2024"
+output: 
+  flexdashboard::flex_dashboard:
+    source_code: embed
+    vertical_layout: fill
+    theme: yeti
+    orientation: rows
+runtime: shiny
+---
+
+``` {js}
+$('.navbar-inverse').removeClass('navbar-inverse').addClass('navbar-default');
+```
+
+
+```{r setup, include=FALSE}
+# Load necessary packages. 
+library(flexdashboard)
+library(highcharter)
+library(viridis)
+library(tidyverse)
+library(countrycode)
+library(DT)
+library(crosstalk)
+library(plotly)
+library(dplyr)
+library(tibble)
+require(shiny)
+require(gridExtra)
+```
+
+```{r include=FALSE}
+population <- read.csv('population-and-demography.csv')
+population <-  population[, c("Country.name", 
+                              "Year", 
+                              "Population", 
+                              "Population.of.children.under.the.age.of.5", 
+                              "Population.aged.5.to.9.years", 
+                              "Population.aged.10.to.14.years", 
+                              "Population.aged.15.to.19.years",
+                              "population__all__20_24__records",
+                              "population__all__25_29__records",
+                              "population__all__30_34__records",
+                              "population__all__35_39__records", 
+                              "population__all__40_44__records",
+                              "population__all__45_49__records",
+                              "population__all__50_54__records",
+                              "population__all__55_59__records",
+                              "population__all__60_64__records",
+                              "population__all__65_69__records",
+                              "population__all__70_74__records",
+                              "population__all__75_79__records",
+                              "population__all__80_84__records",
+                              "population__all__85_89__records",
+                              "population__all__90_94__records",
+                              "population__all__95_99__records",
+                              "Population.older.than.100.years")] %>% 
+  rename("Country" = "Country.name",
+         "0-4" = "Population.of.children.under.the.age.of.5",
+         "5-9" = "Population.aged.5.to.9.years",
+         "10-14" = "Population.aged.10.to.14.years",
+         "15-19" = "Population.aged.15.to.19.years",
+         "20-24" = "population__all__20_24__records",
+         "25-29" = "population__all__25_29__records",
+         "30-34" = "population__all__30_34__records",
+         "35-39" = "population__all__35_39__records",
+         "40-44" = "population__all__40_44__records",
+         "45-49" = "population__all__45_49__records",
+         "50-54" = "population__all__50_54__records",
+         "55-59" = "population__all__55_59__records",
+         "60-64" = "population__all__60_64__records",
+         "65-69" = "population__all__65_69__records",
+         "70-74" = "population__all__70_74__records",
+         "75-79" = "population__all__75_79__records",
+         "80-84" = "population__all__80_84__records",
+         "85-89" = "population__all__85_89__records",
+         "90-94" = "population__all__90_94__records",
+         "95-99" = "population__all__95_99__records",
+         "100 + " = "Population.older.than.100.years")
+
+gender_ratio <- read.csv('share-population-female.csv') %>% 
+  rename("Country" = "Entity", "Female"="Population..female....of.total.population.")
+
+gender_ratio[,"Male"] <- 100 - gender_ratio[,"Female"]
+
+fertility_rate <- read.csv('children-per-woman-vs-human-development-index.csv')
+fertility_rate <- fertility_rate[,c("Entity", "Year", "Fertility.rate...Sex..all...Age..all...Variant..estimates")] %>% 
+  rename("Country" = "Entity", 
+         "Fertility_rate" = "Fertility.rate...Sex..all...Age..all...Variant..estimates")
+
+data <- inner_join(population, gender_ratio, by = c("Country", "Year")) 
+data <- inner_join(data, fertility_rate, by = c("Country", "Year"))
+
+names(data) <- tolower(names(data))
+
+countries <- data[!(data$country %in% c("Low-income countries", 
+                                        "Lower-middle-income countries", 
+                                        "Upper-middle-income countries", 
+                                        "High-income countries", 
+                                        "World")), ]
+
+countries[countries$country == "United States", "country"] = "United States of America" 
+countries[countries$country == "Serbia", "country"] = "Republic of Serbia"
+
+income <- data[(data$country %in% c("Low-income countries", 
+                                    "Lower-middle-income countries", 
+                                    "Upper-middle-income countries", 
+                                    "High-income countries", 
+                                    "World")), ]
+```
+
+```{r include=FALSE}
+# Create a custom theme for the plots. 
+custom_theme <- hc_theme(
+  colors = c('#5CACEE', 'green', 'red'),
+  chart = list(
+         backgroundColor = '#FFFFFF', 
+         plotBorderColor = "black"),
+  xAxis = list(
+         gridLineColor = "C9C9C9", 
+         labels = list(style = list(color = "#333333")), 
+         lineColor = "#C9C9C9", 
+         minorGridLineColor = "#C9C9C9", 
+         tickColor = "#C9C9C9", 
+         title = list(style = list(color = "#333333"))), 
+  yAxis = list(
+         gridLineColor = "#C9C9C9", 
+         labels = list(style = list(color = "#333333")), 
+         lineColor = "#C9C9C9", 
+         minorGridLineColor = "#C9C9C9", 
+         tickColor = "#C9C9C9", 
+         tickWidth = 1, 
+         title = list(style = list(color = "#333333"))),   
+  title = list(style = list(color = '#333333', fontFamily = "Lato")),
+  subtitle = list(style = list(color = '#666666', fontFamily = "Lato")),
+  legend = list(
+         itemStyle = list(color = "#333333"), 
+         itemHoverStyle = list(color = "#FFF"), 
+         itemHiddenStyle = list(color = "#606063")), 
+  credits = list(style = list(color = "#666")),
+  itemHoverStyle = list(color = 'gray'))
+```
+
+<style>
+.colored {
+  background-color: #eef4fc;
+}
+.navbar {
+  background-color: #5B92E4;
+  border-color: #FFFFFF;
+}
+
+</style>
+
+<style type="text/css">
+.value-box .value {
+    color: white;
+}
+.value-box .caption {
+    color: white;
+}
+</style>
+
+
+Worldwide
+=======================================================================
+
+Row {data-height = 50}
+-----------------------------------------------------------------------
+
+### World Population in 2021
+```{r}
+world_average_fertility_rate <- countries %>%
+  select(year, country, population) %>%
+  group_by(year) %>%
+  summarise(population = sum(population)) 
+
+world_average_fertility_rate <- tail(world_average_fertility_rate$population, 1)
+
+valueBox(world_average_fertility_rate, icon = "fa-globe", color = '#5B92E4')
+```
+
+Row {data-height = 600}
+-----------------------------------------------------------------------
+
+### World map {.no-title}
+
+```{r}
+countries_tibble <- countries %>%
+  select(year, country, population) %>%
+  group_by(year, country) %>%
+  summarise(population = sum(population))
+
+selectInput("worldwide_year", 
+            "Year:", 
+            choices = unique(countries_tibble$year), 
+            selected = unique(countries_tibble$year)[-1])
+
+renderHighchart({
+  countries_tibble_data <- reactive({
+    subset(countries_tibble, year == input$worldwide_year) 
+  })
+
+  
+  highchart() %>%
+      hc_add_series_map(worldgeojson,
+                        countries_tibble_data(),
+                        value = "population",
+                        joinBy = c("name", "country")) %>% 
+      hc_colorAxis(minColor = "#dee9f9", 
+                   maxColor = "#243a5b") %>% 
+      hc_title(text = paste("Population by Country for Year", 
+                            input$worldwide_year)) %>% 
+      hc_tooltip(borderWidth = 1.5, headerFormat = "") %>% 
+      hc_plotOptions(series = list(stacking = "normal", 
+                                   dataLabels = list(enabled = TRUE, 
+                                                     format = "{point.y:.0f}"))) %>%
+      hc_add_theme(custom_theme)
+})
+```
+
+Row {.tabset .tabset-fade .colored data-height=350}
+-----------------------------------------------------------------------
+### Fertility Rate and Population Change
+
+```{r}
+world_fertility_rate <- countries %>% 
+  select(year, fertility_rate) %>% 
+  group_by(year) %>% 
+  summarise(fertility_rate = mean(fertility_rate))
+
+output1 <- highchart() %>% 
+  hc_add_series(world_fertility_rate, 
+                hcaes(x = year, y = fertility_rate, color = fertility_rate), 
+                type = "line") %>%  
+  hc_tooltip(
+    crosshairs = TRUE, 
+    borderWidth = 1.5, 
+    headerFormat = "", 
+    pointFormat = paste("Year: <b>{point.x}</b> Fertility rate: <b>{point.y}</b>")
+  ) %>%
+  hc_title(text = "Worldwide Fertility Rate by Year") %>% 
+  hc_subtitle(text = "1960-2021") %>%
+  hc_xAxis(title = list(text = "Year")) %>%
+  hc_yAxis(title = list(text = "Fertility rate"), allowDecimals = FALSE) %>%
+  hc_legend(enabled = FALSE) %>% 
+  hc_add_theme(custom_theme)
+
+world_population <- countries %>%
+  select(year, population) %>%
+  group_by(year) %>%
+  summarise(population = sum(population)) 
+
+output2 <- highchart() %>% 
+  hc_add_series(world_population, 
+                hcaes(x = year, y = population, color = population), 
+                type = "line") %>%
+  hc_tooltip(
+    crosshairs = TRUE, 
+    borderWidth = 1.5, 
+    headerFormat = "", 
+    pointFormat = paste("Year: <b>{point.x}</b> Population: <b>{point.y}</b>")
+  ) %>%
+  hc_title(text = "Worldwide Population by Year") %>% 
+  hc_subtitle(text = "1960-2021") %>%
+  hc_xAxis(title = list(text = "Year")) %>%
+  hc_yAxis(title = list(text = "Population"),
+           labels = list(formatter = JS("function() { 
+                                        return this.value / 1000000000 + 'B'; }")),
+           allowDecimals = FALSE
+  ) %>%
+  hc_legend(enabled = FALSE) %>% 
+  hc_add_theme(custom_theme)
+
+splitLayout(cellWidths = c("50%"), output1, output2)
+```
+
+### Population Pyramid by Year
+
+```{r}
+world_gender_ratio_male <- countries %>% 
+  select('year', 'male', '0-4', '5-9', '10-14', '15-19',
+         '20-24', '25-29', '30-34', '35-39', '40-44',
+         '45-49', '50-54', '55-59', '60-64', '65-69',
+         '70-74', '75-79', '80-84', '85-89', '90-94',
+         '95-99', '100 + ') %>% 
+  group_by(year) %>% 
+  summarise('0-4' = round(sum(`0-4` * `male` / 100), 0),
+            '5-9' = round(sum(`5-9` * `male` / 100), 0),
+            '10-14' = round(sum(`10-14` * `male` / 100), 0),
+            '15-19' = round(sum(`15-19` * `male` / 100), 0),
+            '20-24' = round(sum(`20-24` * `male` / 100), 0),
+            '25-29' = round(sum(`25-29` * `male` / 100), 0),
+            '30-34' = round(sum(`30-34` * `male` / 100), 0),
+            '35-39' = round(sum(`35-39` * `male` / 100), 0),
+            '40-44' = round(sum(`40-44` * `male` / 100), 0),
+            '45-49' = round(sum(`45-49` * `male` / 100), 0),
+            '50-54' = round(sum(`50-54` * `male` / 100), 0),
+            '55-59' = round(sum(`55-59` * `male` / 100), 0),
+            '60-64' = round(sum(`60-64` * `male` / 100), 0),
+            '65-69' = round(sum(`65-69` * `male` / 100), 0),
+            '70-74' = round(sum(`70-74` * `male` / 100), 0),
+            '75-79' = round(sum(`75-79` * `male` / 100), 0),
+            '80-84' = round(sum(`80-84` * `male` / 100), 0),
+            '85-89' = round(sum(`85-89` * `male` / 100), 0),
+            '90-94' = round(sum(`90-94` * `male` / 100), 0),
+            '95-99' = round(sum(`95-99` * `male` / 100), 0),
+            '100 + ' = round(sum(`100 + ` * `male` / 100), 0)) %>% 
+  pivot_longer(!year, names_to = "Age", values_to = "Male")
+
+world_gender_ratio_female <- countries %>% 
+  select('year', 'female', '0-4', '5-9', '10-14', '15-19',
+         '20-24', '25-29', '30-34', '35-39', '40-44',
+         '45-49', '50-54', '55-59', '60-64', '65-69',
+         '70-74', '75-79', '80-84', '85-89', '90-94',
+         '95-99', '100 + ') %>% 
+  group_by(year) %>% 
+  summarise('0-4' = round(sum(`0-4` * `female` / 100), 0) ,
+            '5-9' = round(sum(`5-9` * `female` / 100), 0),
+            '10-14' = round(sum(`10-14` * `female` / 100), 0),
+            '15-19' = round(sum(`15-19` * `female` / 100), 0),
+            '20-24' = round(sum(`20-24` * `female` / 100), 0),
+            '25-29' = round(sum(`25-29` * `female` / 100), 0),
+            '30-34' = round(sum(`30-34` * `female` / 100), 0),
+            '35-39' = round(sum(`35-39` * `female` / 100), 0),
+            '40-44' = round(sum(`40-44` * `female` / 100), 0),
+            '45-49' = round(sum(`45-49` * `female` / 100), 0),
+            '50-54' = round(sum(`50-54` * `female` / 100), 0),
+            '55-59' = round(sum(`55-59` * `female` / 100), 0),
+            '60-64' = round(sum(`60-64` * `female` / 100), 0),
+            '65-69' = round(sum(`65-69` * `female` / 100), 0),
+            '70-74' = round(sum(`70-74` * `female` / 100), 0),
+            '75-79' = round(sum(`75-79` * `female` / 100), 0),
+            '80-84' = round(sum(`80-84` * `female` / 100), 0),
+            '85-89' = round(sum(`85-89` * `female` / 100), 0),
+            '90-94' = round(sum(`90-94` * `female` / 100), 0),
+            '95-99' = round(sum(`95-99` * `female` / 100), 0),
+            '100 + ' = round(sum(`100 + ` * `female` / 100)), 0) %>% 
+  pivot_longer(!year, names_to = "Age", values_to = "Female")
+
+world_gender_ratio <- inner_join(world_gender_ratio_male, 
+                                 world_gender_ratio_female, 
+                                 by = c("year", "Age")) 
+
+categories <- c(
+  '0-4', '5-9', '10-14', '15-19',
+  '20-24', '25-29', '30-34', '35-39', '40-44',
+  '45-49', '50-54', '55-59', '60-64', '65-69',
+  '70-74', '75-79', '80-84', '85-89', '90-94',
+  '95-99', '100 + '
+)  
+
+renderHighchart({
+  pyramid_data_male <- reactive({
+    subset(world_gender_ratio_male, year == input$worldwide_year) %>% 
+      select(-year) %>% 
+      mutate(Age = factor(Age, levels = rev(levels(Age))))
+  })
+  pyramid_data_female <- reactive({
+    subset(world_gender_ratio_female, year == input$worldwide_year) %>% 
+      select(-year) %>% 
+      mutate(Age = factor(Age, levels = rev(levels(Age))))
+  })
+  
+  formatLargeNumber <- JS("function() {
+      var absValue = Math.abs(this.value);
+      if (absValue >= 1000000) {
+          return (absValue / 1000000).toFixed(1) + 'M';
+      } else if (absValue >= 1000) {
+          return (absValue / 1000).toFixed(1) + 'K';
+      } else {
+          return absValue;
+      }
+  }")
+  
+  highchart() %>% 
+    hc_chart(type = "bar") %>% 
+    hc_title(text = paste("Population Pyramid for Year", input$worldwide_year)) %>% 
+    hc_xAxis(categories = categories, label = list()) %>% 
+    hc_yAxis(
+      title = list(text = "Population"),
+      labels = list(
+        formatter = formatLargeNumber
+      )
+    ) %>% 
+    hc_add_series(name = "Male", 
+                  data = pyramid_data_male(), 
+                  type = "bar", 
+                  hcaes(x = Age, y = -Male)) %>% 
+    hc_add_series(name = "Female", 
+                  data = pyramid_data_female(), 
+                  type = "bar", 
+                  hcaes(x = Age, y = Female)) %>% 
+    hc_tooltip(
+      formatter = JS("function() {
+                      return '<b>' + this.series.name + '</b><br/>' +
+                             'Age: <b>' + this.point.category + '</b><br/>' +
+                             'Population: <b>' +
+                             Highcharts.numberFormat(Math.abs(this.point.y), 0) + '</b>';
+                  }")
+    ) %>%
+    hc_plotOptions(series = list(stacking = "normal", 
+                                 dataLabels = list(enabled = FALSE, 
+                                                   format = "{point.y:.0f}"))) %>%
+    hc_colors(c("#5B92E4", "#E55B92")) %>%  
+    hc_add_theme(custom_theme) 
+})
+
+```
+
+By Income
+=======================================================================
+
+Row {data-height=650}
+-----------------------------------------------------------------------
+### Worldwide population pyramid by income {.no-title}
+
+```{r}
+income_gender_ratio_male <- income %>% 
+  select('year', 'country', 'male', '0-4', '5-9', '10-14', '15-19',
+         '20-24', '25-29', '30-34', '35-39', '40-44',
+         '45-49', '50-54', '55-59', '60-64', '65-69',
+         '70-74', '75-79', '80-84', '85-89', '90-94',
+         '95-99', '100 + ') %>% 
+  group_by(year, country) %>% 
+  summarise('0-4' = sum(`0-4` * `male` / 100) ,
+            '5-9' = sum(`5-9` * `male` / 100),
+            '10-14' = sum(`10-14` * `male` / 100),
+            '15-19' = sum(`15-19` * `male` / 100),
+            '20-24' = sum(`20-24` * `male` / 100),
+            '25-29' = sum(`25-29` * `male` / 100),
+            '30-34' = sum(`30-34` * `male` / 100),
+            '35-39' = sum(`35-39` * `male` / 100),
+            '40-44' = sum(`40-44` * `male` / 100),
+            '45-49' = sum(`45-49` * `male` / 100),
+            '50-54' = sum(`50-54` * `male` / 100),
+            '55-59' = sum(`55-59` * `male` / 100),
+            '60-64' = sum(`60-64` * `male` / 100),
+            '65-69' = sum(`65-69` * `male` / 100),
+            '70-74' = sum(`70-74` * `male` / 100),
+            '75-79' = sum(`75-79` * `male` / 100),
+            '80-84' = sum(`80-84` * `male` / 100),
+            '85-89' = sum(`85-89` * `male` / 100),
+            '90-94' = sum(`90-94` * `male` / 100),
+            '95-99' = sum(`95-99` * `male` / 100),
+            '100 + ' = sum(`100 + ` * `male` / 100)) %>% 
+  pivot_longer(c('0-4', '5-9', '10-14', '15-19',
+         '20-24', '25-29', '30-34', '35-39', '40-44',
+         '45-49', '50-54', '55-59', '60-64', '65-69',
+         '70-74', '75-79', '80-84', '85-89', '90-94',
+         '95-99', '100 + '), names_to = "Age", values_to = "Male")
+
+income_gender_ratio_female <- income %>% 
+  select('year', 'country', 'female', '0-4', '5-9', '10-14', '15-19',
+         '20-24', '25-29', '30-34', '35-39', '40-44',
+         '45-49', '50-54', '55-59', '60-64', '65-69',
+         '70-74', '75-79', '80-84', '85-89', '90-94',
+         '95-99', '100 + ') %>% 
+  group_by(year, country) %>% 
+  summarise('0-4' = sum(`0-4` * `female` / 100) ,
+            '5-9' = sum(`5-9` * `female` / 100),
+            '10-14' = sum(`10-14` * `female` / 100),
+            '15-19' = sum(`15-19` * `female` / 100),
+            '20-24' = sum(`20-24` * `female` / 100),
+            '25-29' = sum(`25-29` * `female` / 100),
+            '30-34' = sum(`30-34` * `female` / 100),
+            '35-39' = sum(`35-39` * `female` / 100),
+            '40-44' = sum(`40-44` * `female` / 100),
+            '45-49' = sum(`45-49` * `female` / 100),
+            '50-54' = sum(`50-54` * `female` / 100),
+            '55-59' = sum(`55-59` * `female` / 100),
+            '60-64' = sum(`60-64` * `female` / 100),
+            '65-69' = sum(`65-69` * `female` / 100),
+            '70-74' = sum(`70-74` * `female` / 100),
+            '75-79' = sum(`75-79` * `female` / 100),
+            '80-84' = sum(`80-84` * `female` / 100),
+            '85-89' = sum(`85-89` * `female` / 100),
+            '90-94' = sum(`90-94` * `female` / 100),
+            '95-99' = sum(`95-99` * `female` / 100),
+            '100 + ' = sum(`100 + ` * `female` / 100)) %>% 
+  pivot_longer(c('0-4', '5-9', '10-14', '15-19',
+         '20-24', '25-29', '30-34', '35-39', '40-44',
+         '45-49', '50-54', '55-59', '60-64', '65-69',
+         '70-74', '75-79', '80-84', '85-89', '90-94',
+         '95-99', '100 + '), names_to = "Age", values_to = "Female")
+
+income_gender_ratio <- inner_join(income_gender_ratio_male, 
+                                  income_gender_ratio_female, 
+                                  by = c("year", "country", "Age")) 
+
+fluidRow(
+  column(width = 6,
+         selectInput("income_year", 
+                     "Year:", 
+                     choices = unique(income_gender_ratio$year), 
+                     selected = unique(income_gender_ratio$year)[-1])
+  ),
+  column(width = 6,
+         selectInput("income_level", 
+                     "Income Level:", 
+                     choices = unique(income_gender_ratio$country), 
+                     selected = unique(income_gender_ratio$country)[1])
+  )
+)
+
+categories <- c(
+  '0-4', '5-9', '10-14', '15-19',
+  '20-24', '25-29', '30-34', '35-39', '40-44',
+  '45-49', '50-54', '55-59', '60-64', '65-69',
+  '70-74', '75-79', '80-84', '85-89', '90-94',
+  '95-99', '100 + '
+)  
+
+renderHighchart({
+  income_gender_ratio_male_reactive <- reactive({
+    subset(income_gender_ratio_male, 
+           year == input$income_year & country == input$income_level) %>% 
+      mutate(Age = factor(Age, levels = rev(levels(Age)))) # Reorder age groups
+  })
+  
+  income_gender_ratio_female_reactive <- reactive({
+    subset(income_gender_ratio_female, 
+           year == input$income_year & country == input$income_level) %>% 
+      mutate(Age = factor(Age, levels = rev(levels(Age)))) # Reorder age groups
+  })
+  
+  formatLargeNumber <- JS("function() {
+      var absValue = Math.abs(this.value);
+      if (absValue >= 1000000) {
+          return (absValue / 1000000).toFixed(1) + 'M';
+      } else if (absValue >= 1000) {
+          return (absValue / 1000).toFixed(1) + 'K';
+      } else {
+          return absValue;
+      }
+  }")
+
+  highchart() %>% 
+    hc_chart(type = "bar") %>% 
+    hc_title(text = paste("Population Pyramid in", input$income_level, "for Year", input$income_year)) %>% 
+    hc_xAxis(categories = categories, label = list()) %>% 
+    hc_yAxis(title = list(text = "Population"),
+             labels = list(formatter = formatLargeNumber)) %>% 
+    hc_add_series(name = "Male", 
+                  data = income_gender_ratio_male_reactive(), 
+                  type = "bar", 
+                  hcaes(x = Age, y = -Male, name = "Male")) %>% 
+    hc_add_series(name = "Female",
+                  data = income_gender_ratio_female_reactive(), 
+                  type = "bar", 
+                  hcaes(x = Age, y = Female, name = "Female")) %>% 
+    hc_tooltip(
+      formatter = JS("function() {
+                      return '<b>' + this.series.name + '</b><br/>' +
+                             'Age: <b>' + this.point.category + '</b><br/>' +
+                             'Population: <b>' +
+                             Highcharts.numberFormat(Math.abs(this.point.y), 0) + '</b>';
+                  }")
+    ) %>%
+    hc_plotOptions(series = list(stacking = "normal", 
+                                 dataLabels = list(enabled = FALSE, 
+                                                   format = "{point.y:.0f}"))) %>%
+    hc_colors(c("#5B92E4", "#E55B92")) %>%  
+    hc_add_theme(custom_theme)
+})
+```
+
+Column {data-height = 400 .colored}
+-----------------------------------------------------------------------
+### Worldwide population by income {.no-title}
+
+```{r}
+# Create tibble for our line plot (World population by year).  
+fertility_rate_income <- income %>% 
+  select(year, country, fertility_rate) 
+
+income_output1 <- highchart() %>% 
+  hc_add_series(fertility_rate_income, 
+                hcaes(x = year, 
+                      y = fertility_rate, 
+                      group = country, 
+                      color = country), 
+                type = "line") %>% 
+  
+  hc_tooltip(crosshairs = TRUE, 
+             borderWidth = 1.5, 
+             headerFormat = "", 
+             pointFormat = paste("Year: <b>{point.x}</b> <br> 
+                                 Type: <b>{point.country}</b> <br> 
+                                 Fertility rate: <b>{point.y}</b>")) %>%
+  hc_title(text = "Worldwide fertility rate by year") %>% 
+  hc_subtitle(text = "1960-2021") %>%
+  hc_xAxis(title = list(text = "Year")) %>%
+  hc_yAxis(title = list(text = "Fertility rate"), allowDecimals = FALSE) %>%
+  hc_add_theme(custom_theme)  
+
+world_population_income <- income %>%
+  select(year, country, population)
+
+income_output2 <- highchart() %>% 
+  hc_add_series(world_population_income, 
+                hcaes(x = year, 
+                      y = population, 
+                      group = country, 
+                      color = country), 
+                type = "line") %>%
+  hc_tooltip(crosshairs = TRUE, 
+             borderWidth = 1.5, 
+             headerFormat = "", 
+             pointFormat = paste("Year: <b>{point.x}</b> <br> 
+                                 Type: <b>{point.country}</b> <br> 
+                                 Population: <b>{point.y}</b>")) %>%
+  hc_title(text = "Worldwide population by year") %>% 
+  hc_subtitle(text = "1960-2021") %>%
+  hc_xAxis(title = list(text = "Year")) %>%
+  hc_yAxis(title = list(text = "Population"),
+           labels = list(
+             formatter = JS("function() { return this.value / 1000000000 + 'B'; }")
+             ),
+           allowDecimals = FALSE
+  ) %>%
+  hc_add_theme(custom_theme)
+
+splitLayout(cellWidths = c("50%"), income_output1, income_output2)
+
+```
+
+By Country
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Population pyramid {.no-title}
+
+```{r}
+world_gender_ratio_male_2 <- countries %>%
+  select('year', 'country', 'male', '0-4', '5-9', '10-14', '15-19',
+         '20-24', '25-29', '30-34', '35-39', '40-44',
+         '45-49', '50-54', '55-59', '60-64', '65-69',
+         '70-74', '75-79', '80-84', '85-89', '90-94',
+         '95-99', '100 + ') %>%
+  group_by(year, country) %>%
+  summarise('0-4' = sum(`0-4` * `male` / 100),
+            '5-9' = sum(`5-9` * `male` / 100),
+            '10-14' = sum(`10-14` * `male` / 100),
+            '15-19' = sum(`15-19` * `male` / 100),
+            '20-24' = sum(`20-24` * `male` / 100),
+            '25-29' = sum(`25-29` * `male` / 100),
+            '30-34' = sum(`30-34` * `male` / 100),
+            '35-39' = sum(`35-39` * `male` / 100),
+            '40-44' = sum(`40-44` * `male` / 100),
+            '45-49' = sum(`45-49` * `male` / 100),
+            '50-54' = sum(`50-54` * `male` / 100),
+            '55-59' = sum(`55-59` * `male` / 100),
+            '60-64' = sum(`60-64` * `male` / 100),
+            '65-69' = sum(`65-69` * `male` / 100),
+            '70-74' = sum(`70-74` * `male` / 100),
+            '75-79' = sum(`75-79` * `male` / 100),
+            '80-84' = sum(`80-84` * `male` / 100),
+            '85-89' = sum(`85-89` * `male` / 100),
+            '90-94' = sum(`90-94` * `male` / 100),
+            '95-99' = sum(`95-99` * `male` / 100),
+            '100 + ' = sum(`100 + ` * `male` / 100)) %>% 
+  pivot_longer(c('0-4', '5-9', '10-14', '15-19',
+                 '20-24', '25-29', '30-34', '35-39', '40-44',
+                 '45-49', '50-54', '55-59', '60-64', '65-69',
+                 '70-74', '75-79', '80-84', '85-89', '90-94',
+                 '95-99', '100 + '), 
+               names_to = "Age", 
+               values_to = "Male")
+
+world_gender_ratio_female_2 <- countries %>%
+  select('year', 'country', 'female', '0-4', '5-9', '10-14', '15-19',
+         '20-24', '25-29', '30-34', '35-39', '40-44',
+         '45-49', '50-54', '55-59', '60-64', '65-69',
+         '70-74', '75-79', '80-84', '85-89', '90-94',
+         '95-99', '100 + ') %>%
+  group_by(year, country) %>%
+  summarise('0-4' = sum(`0-4` * `female` / 100) ,
+            '5-9' = sum(`5-9` * `female` / 100),
+            '10-14' = sum(`10-14` * `female` / 100),
+            '15-19' = sum(`15-19` * `female` / 100),
+            '20-24' = sum(`20-24` * `female` / 100),
+            '25-29' = sum(`25-29` * `female` / 100),
+            '30-34' = sum(`30-34` * `female` / 100),
+            '35-39' = sum(`35-39` * `female` / 100),
+            '40-44' = sum(`40-44` * `female` / 100),
+            '45-49' = sum(`45-49` * `female` / 100),
+            '50-54' = sum(`50-54` * `female` / 100),
+            '55-59' = sum(`55-59` * `female` / 100),
+            '60-64' = sum(`60-64` * `female` / 100),
+            '65-69' = sum(`65-69` * `female` / 100),
+            '70-74' = sum(`70-74` * `female` / 100),
+            '75-79' = sum(`75-79` * `female` / 100),
+            '80-84' = sum(`80-84` * `female` / 100),
+            '85-89' = sum(`85-89` * `female` / 100),
+            '90-94' = sum(`90-94` * `female` / 100),
+            '95-99' = sum(`95-99` * `female` / 100),
+            '100 + ' = sum(`100 + ` * `female` / 100)) %>% 
+  pivot_longer(c('0-4', '5-9', '10-14', '15-19',
+                 '20-24', '25-29', '30-34', '35-39', '40-44',
+                 '45-49', '50-54', '55-59', '60-64', '65-69',
+                 '70-74', '75-79', '80-84', '85-89', '90-94',
+                 '95-99', '100 + '), 
+               names_to = "Age", 
+               values_to = "Female")
+
+world_gender_ratio_2 <- inner_join(world_gender_ratio_male_2, 
+                                   world_gender_ratio_female_2, 
+                                   by = c("year", "country", "Age")) 
+
+categories_2 <- c('0-4', '5-9', '10-14', '15-19',
+                  '20-24', '25-29', '30-34', '35-39', '40-44',
+                  '45-49', '50-54', '55-59', '60-64', '65-69',
+                  '70-74', '75-79', '80-84', '85-89', '90-94',
+                  '95-99', '100 + ')
+
+fluidRow(
+  column(width = 6,
+         selectInput("by_country_year", 
+                     "Year:", 
+                     choices = unique(world_gender_ratio_2$year))
+  ),
+  column(width = 6,
+         selectInput("by_country_country", 
+                     "Country:", 
+                     choices = unique(world_gender_ratio_2$country))
+  )
+)
+
+renderHighchart({
+  pyramid_data_male_2 <- reactive({
+    subset(world_gender_ratio_male_2, 
+           year == input$by_country_year & country == input$by_country_country) %>% 
+      mutate(Age = factor(Age, levels = rev(levels(Age))))
+  })
+  pyramid_data_female_2 <- reactive({
+    subset(world_gender_ratio_female_2, 
+           year == input$by_country_year & country == input$by_country_country) %>%
+      mutate(Age = factor(Age, levels = rev(levels(Age))))
+  })
+
+  formatLargeNumber <- JS("function() {
+      var absValue = Math.abs(this.value);
+      if (absValue >= 1000000) {
+          return (absValue / 1000000).toFixed(1) + 'M';
+      } else if (absValue >= 1000) {
+          return (absValue / 1000).toFixed(1) + 'K';
+      } else {
+          return absValue;
+      }
+  }")
+  
+  highchart() %>% 
+    hc_chart(type = "bar") %>% 
+    hc_title(text = paste("Population Pyramid in", 
+                          input$by_country_country, 
+                          "for Year", 
+                          input$by_country_year)) %>% 
+    hc_xAxis(categories = categories_2, label = list()) %>% 
+    hc_yAxis(title = list(text = "Population"),
+             labels = list(formatter = formatLargeNumber)) %>% 
+    hc_add_series(name = "Male", 
+                  data = pyramid_data_male_2(), 
+                  type = "bar", 
+                  hcaes(x = Age, y = -Male)) %>% 
+    hc_add_series(name = "Female", 
+                  data = pyramid_data_female_2(), 
+                  type = "bar", 
+                  hcaes(x = Age, y = Female)) %>% 
+    hc_plotOptions(series = list(stacking = "normal")) %>%
+    hc_tooltip(formatter = JS("function() {
+                                return '<b>' + this.series.name + '</b><br/>' +
+                                'Age: <b>' + this.point.category + '</b><br/>' +
+                                'Population: <b>' + 
+                                Highcharts.numberFormat(Math.abs(this.point.y), 0) + '</b>';
+                              }")) %>%
+    hc_colors(c("#5B92E4", "#E55B92")) %>%  
+    hc_add_theme(custom_theme)
+})
+```
+
+
+```{r}
+selectInput("Year3", 
+            "Year:", 
+            choices = unique(world_gender_ratio_2$year))
+
+selectInput("Country", 
+            "Country:", 
+            choices = unique(world_gender_ratio_2$country))
+```
+
+Column
+-----------------------------------------------------------------------
+
+### Fertility Rate by Country {.no-title}
+```{r}
+fertility_rate_by_country <- countries %>%
+  select(year, country, fertility_rate) 
+
+renderHighchart({
+  fertility_rate_by_country_reactive <- reactive({
+    subset(fertility_rate_by_country, 
+           country == input$by_country_country)
+  })
+  
+  
+highchart() %>% 
+  hc_add_series(fertility_rate_by_country_reactive(), 
+                hcaes(x = year, 
+                      y = fertility_rate, 
+                      color = fertility_rate), 
+                type = "line") %>%
+  
+  hc_tooltip(crosshairs = TRUE, 
+             borderWidth = 1.5, 
+             headerFormat = "", 
+             pointFormat = paste("Year: <b>{point.x}</b> <br> 
+                                 Fertility rate: <b>{point.y}</b>")) %>%
+  hc_title(text = paste("Fertility rate in", 
+                        input$by_country_country, 
+                        "by year")) %>% 
+  hc_subtitle(text = "1960-2021") %>%
+  hc_xAxis(title = list(text = "Year")) %>%
+  hc_yAxis(title = list(text = "Population"),
+           allowDecimals = FALSE) %>%
+  hc_legend(enabled = FALSE) %>% 
+  hc_add_theme(custom_theme)
+})
+
+```
+
+### Population Change by Country {.no-title}
+
+```{r}
+population_change_by_country <- countries %>%
+  select(year, country, population) 
+
+renderHighchart({
+  population_change_by_country_reactive <- reactive({
+    subset(
+      population_change_by_country, 
+      country == input$by_country_country
+    )
+  })
+  
+highchart() %>% 
+  hc_add_series(
+    population_change_by_country_reactive(), 
+    hcaes(x = year, 
+    y = population, 
+    color = population), 
+    type = "line"
+  ) %>%
+  hc_tooltip(
+    crosshairs = TRUE, 
+    borderWidth = 1.5, 
+    headerFormat = "", 
+    pointFormat = paste("Year: <b>{point.x}</b> <br> Population: <b>{point.y}</b>")
+  ) %>%
+  hc_title(
+    text = paste(
+      "Population Change in", 
+      input$by_country_country, 
+      "by year"
+    )
+  ) %>% 
+  hc_subtitle(text = "1960-2021") %>%
+  hc_xAxis(title = list(text = "Year")) %>%
+  hc_yAxis(title = list(text = "Population"),
+           allowDecimals = FALSE) %>%
+  hc_legend(enabled = FALSE) %>% 
+  hc_add_theme(custom_theme)
+})
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### Population in the selected year
+
+```{r}
+selected_year_population <- countries %>%
+  select(year, country, population)
+
+renderValueBox({
+  selected_year_population <- subset(
+    selected_year_population, 
+    country == input$by_country_country & year == input$by_country_year
+  ) %>% 
+    select(population) %>% 
+    as.numeric
+  
+  valueBox(selected_year_population, icon = "fa-solid fa-users")
+})
+
+```
+
+### Fertility rate in the selected year
+
+```{r}
+selected_year_fertility_rate <- countries %>%
+  select(year, country, fertility_rate)
+
+renderValueBox({
+  selected_year_fertility_rate <- 
+    subset(
+      selected_year_fertility_rate, 
+      country == input$by_country_country & year == input$by_country_year
+    ) %>% 
+    select(fertility_rate) %>% 
+    as.numeric
+  
+  valueBox(selected_year_fertility_rate, icon = "fas fa-baby")
+})
+```
+
+### Gender ratio in the selected year
+
+```{r}
+selected_year_gender_ratio <- countries %>% 
+  select(year, country, male, female)
+
+renderValueBox({
+  selected_year_gender_ratio <- 
+    subset(
+      selected_year_gender_ratio, 
+      country == input$by_country_country & year == input$by_country_year
+    ) %>% 
+    select(male, female) 
+  selected_year_gender_ratio_male <- selected_year_gender_ratio$male %>% round(2)
+  selected_year_gender_ratio_female <- selected_year_gender_ratio$female %>% round(2)
+
+  selected_year_gender_ratio_total <- selected_year_gender_ratio_male + selected_year_gender_ratio_female
+  
+  selected_year_gender_ratio_male <- selected_year_gender_ratio_male + (100 - selected_year_gender_ratio_total) * (selected_year_gender_ratio_male / selected_year_gender_ratio_total)
+  
+  selected_year_gender_ratio_female <- selected_year_gender_ratio_female + (100 - selected_year_gender_ratio_total) * (selected_year_gender_ratio_female / selected_year_gender_ratio_total)
+  
+  selected_year_gender_ratio_male <- as.character(selected_year_gender_ratio_male)
+  selected_year_gender_ratio_female <- as.character(selected_year_gender_ratio_female)
+
+  selected_year_gender_ratio <- paste(
+    selected_year_gender_ratio_male, 
+    selected_year_gender_ratio_female, 
+    sep = ":"
+  )
+  
+  valueBox(selected_year_gender_ratio, icon = "fa-solid fa-venus-mars")
+})
+```
+
+
+
+About {data-icon="fa-info-circle"}
+=======================================================================
+
+### {}
+
+**References:**  
+
+The datasets used to create the dashboard can be found at:
+
+* https://ourworldindata.org/population-growth
+* https://ourworldindata.org/age-structure
+* https://ourworldindata.org/gender-ratio
+* https://ourworldindata.org/fertility-rate
+
+and were compiled from data from the following sources: 
+
+* United Nations, World Population Prospects (2022), United Nations Development Program, Human Development Report (2024).
+
+* United Nations Development Program, Human Development Report (2024). 
